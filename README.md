@@ -1,5 +1,7 @@
 # claude-code-with-codex-pet
 
+**繁體中文** · [English](README.en.md)
+
 讓 Claude Code（CC）和 Codex 共用同一隻桌寵的 Claude Code mod。
 
 它用的是 Codex 自己的寵物（`~/.codex/pets`），會在桌面上放一隻永遠在最上層的桌寵，同時追蹤 CC 和 Codex 每個對話在做什麼，外觀和行為仿照 Codex App 原版的桌寵。
