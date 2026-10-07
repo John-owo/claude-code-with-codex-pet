@@ -129,6 +129,19 @@ async function launchOverlay($: EngineInterface) {
   }
 }
 
+async function overlayOn($: EngineInterface) {
+  await launchOverlay($)
+  await publish($)
+  return { text: '桌寵已開啟（已經開著就不會重複開）。/pet-off 可以關掉。' }
+}
+
+async function overlayOff($: EngineInterface) {
+  if (!petDir) return { text: '找不到 ~/.codex-pet，沒辦法通知桌寵。' }
+  // The desktop pet checks for this file twice a second and closes when it appears.
+  await $.fs.write(`${petDir}/takeover`, 'off')
+  return { text: '已通知桌寵關閉。之後開新的 CC 對話會再自動打開，/pet-on 可以手動叫回來。' }
+}
+
 async function setMood($: EngineInterface, next: Mood) {
   settle?.cancel()
   settle = undefined
@@ -245,8 +258,10 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'pet',
-      description: 'Codex pet: /pet [list | <id> | codex | overlay [on|off] | hide | show | reload]',
+      description: 'Codex pet: /pet [list | <id> | codex | hide | show | reload]',
     })
+    await $.command.register({ name: 'pet-on', description: 'Codex pet: 打開桌寵' })
+    await $.command.register({ name: 'pet-off', description: 'Codex pet: 關掉桌寵' })
     // With the desktop pet on, the band stays off unless /pet show turned it on.
     const stored = await $.store.get(STORE_HIDDEN)
     const hidden = typeof stored === 'boolean' ? stored : config.overlay
@@ -281,20 +296,11 @@ export const register: Register = (on, options) => {
       return {
         text:
           `Codex 寵物（~/.codex/pets）：\n${rows.join('\n') || '  (沒有找到)'}\n\n` +
-          '/pet <id> 切換 · /pet codex 跟隨 Codex 的選擇 · /pet overlay on|off 開關桌寵 · /pet hide|show · /pet reload',
+          '/pet <id> 切換 · /pet codex 跟隨 Codex 的選擇 · /pet-on · /pet-off 開關桌寵 · /pet hide|show · /pet reload',
       }
     }
-    if (arg === 'overlay' || arg === 'overlay on') {
-      await launchOverlay($)
-      await publish($)
-      return { text: '桌寵已開啟（已經開著就不會重複開）。/pet overlay off 可以關掉。' }
-    }
-    if (arg === 'overlay off') {
-      if (!petDir) return { text: '找不到 ~/.codex-pet，沒辦法通知桌寵。' }
-      // The desktop pet checks for this file twice a second and closes when it appears.
-      await $.fs.write(`${petDir}/takeover`, 'off')
-      return { text: '已通知桌寵關閉。之後開新的 CC 對話會再自動打開，/pet overlay 可以手動叫回來。' }
-    }
+    if (arg === 'overlay' || arg === 'overlay on') return overlayOn($)
+    if (arg === 'overlay off') return overlayOff($)
     if (arg === 'reload') {
       await bake($)
       const failed = await read($, error)
@@ -313,6 +319,9 @@ export const register: Register = (on, options) => {
     const now = await read($, pet)
     return { text: now ? `現在的寵物：${now.displayName}` : `切換失敗：${await read($, error)}` }
   })
+
+  on('command.run', { command: 'pet-on' }, async $ => overlayOn($))
+  on('command.run', { command: 'pet-off' }, async $ => overlayOff($))
 
   on('session.end', async ($, e, next) => {
     await update($, mood, () => 'idle')

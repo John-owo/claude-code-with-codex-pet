@@ -94,6 +94,14 @@ test('the Codex pet shows above the prompt and follows the turn', async ($, on) 
   expect(JSON.stringify(off)).toContain('關閉')
   expect([...written.keys()].some(path => /[\\/]\.codex-pet[\\/]takeover$/.test(path))).toBe(true)
 
+  // /pet-off and /pet-on are standalone commands doing the same thing.
+  written.clear()
+  const offCmd = await $.command.run({ command: 'pet-off', args: '', origin: { kind: 'composer' } } as never)
+  expect(JSON.stringify(offCmd)).toContain('關閉')
+  expect([...written.keys()].some(path => /[\\/]\.codex-pet[\\/]takeover$/.test(path))).toBe(true)
+  const onCmd = await $.command.run({ command: 'pet-on', args: '', origin: { kind: 'composer' } } as never)
+  expect(JSON.stringify(onCmd)).toContain('開啟')
+
   const listed = await $.command.run({ command: 'pet', args: 'list', origin: { kind: 'composer' } } as never)
   expect(JSON.stringify(listed)).toContain('monthly-salary-cat')
 

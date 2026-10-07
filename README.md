@@ -55,8 +55,8 @@
 | `/pet` 或 `/pet list` | 列出 `~/.codex/pets` 裡的寵物 |
 | `/pet <id>` | 換成這隻寵物 |
 | `/pet codex` | 回到跟著 Codex 的選擇 |
-| `/pet overlay` / `/pet overlay on` | 打開桌寵 |
-| `/pet overlay off` | 關掉桌寵（下次開新對話會再自動打開） |
+| `/pet-on` | 打開桌寵（也可用 `/pet overlay on`） |
+| `/pet-off` | 關掉桌寵（也可用 `/pet overlay off`）（下次開新對話會再自動打開） |
 | `/pet show` / `/pet hide` | 顯示 / 隱藏 CC 輸入框上方的小寵物（有桌寵時預設隱藏） |
 | `/pet reload` | 重新讀取寵物圖 |
 
