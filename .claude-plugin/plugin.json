@@ -1,0 +1,32 @@
+{
+  "name": "codex-pet",
+  "version": "0.2.0",
+  "description": "Your Codex pet in Claude Code: above the prompt and as a desktop pet that follows both Claude Code and Codex.",
+  "author": {
+    "name": "John-owo",
+    "url": "https://github.com/John-owo"
+  },
+  "repository": "https://github.com/John-owo/claude-code-with-codex-pet",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "python": {
+      "type": "string",
+      "title": "Python with Pillow",
+      "description": "Python executable used to cut the spritesheet; empty tries py -3, python3, python.",
+      "default": ""
+    },
+    "pet": {
+      "type": "string",
+      "title": "Pet",
+      "description": "Pet folder id under ~/.codex/pets; empty follows Codex's selected local pet.",
+      "default": ""
+    },
+    "overlay": {
+      "type": "boolean",
+      "title": "Desktop pet",
+      "description": "Open the always-on-top desktop pet (shared with Codex) when a session starts.",
+      "default": true
+    }
+  }
+}
