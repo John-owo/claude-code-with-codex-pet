@@ -122,8 +122,12 @@ async function launchOverlay($: EngineInterface) {
   const script = `${$.plugin.root}/overlay/pet_overlay.py`
   const pythonw = config.python ? config.python.replace(/python(\.exe)?$/i, 'pythonw$1') : ''
   const argv = pythonw ? [pythonw, script] : ['pyw', '-3', script]
+  // `cmd /c start` leaves the pet holding run()'s output pipes, so run() waits until timeout even
+  // though the pet opened; Start-Process detaches it and returns at once.
+  const ps = (s: string) => `'${s.replace(/'/g, "''")}'`
+  const command = `Start-Process ${ps(argv[0]!)} -ArgumentList ${argv.slice(1).map(a => ps(/\s/.test(a) ? `"${a}"` : a)).join(',')}`
   try {
-    await $.process.run(['cmd', '/c', 'start', 'codex-pet', ...argv], { timeoutMs: 15_000 })
+    await $.process.run(['powershell', '-NoProfile', '-Command', command], { timeoutMs: 15_000 })
   } catch (err) {
     $.ui.toast(`codex-pet: 桌寵沒開起來 (${String(err)})`)
   }

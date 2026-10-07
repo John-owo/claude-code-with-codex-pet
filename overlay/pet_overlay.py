@@ -119,21 +119,38 @@ def read_json(path: Path):
 
 
 def claim_instance():
-    """Holds the named mutex; asks an older running version to step aside."""
-    for _ in range(40):
+    """Holds the named mutex; asks an older running version to step aside.
+
+    While another pet holds the mutex this waits rather than gives up when that
+    pet is on its way out: a close request (/pet-off) or a takeover is pending,
+    which it acts on within one poll. Without the wait, /pet-off then /pet-on
+    leaves no pet: the new one sees the old one still running and quits, then
+    the old one closes.
+    """
+    unreadable = 0
+    for _ in range(80):  # about 10 s
         handle = kernel32.CreateMutexW(None, True, "Local\\codex-pet-overlay")
         if ctypes.get_last_error() != 183:  # not ERROR_ALREADY_EXISTS
-            # A request to close (/pet overlay off) or step aside was for the pet that
+            # A request to close (/pet-off) or step aside was for the pet that
             # ran before; left in place it would close this one at its first poll.
             TAKEOVER.unlink(missing_ok=True)
             LOCK.write_text(json.dumps({"pid": os.getpid(), "version": VERSION}), encoding="utf-8")
             return handle
         kernel32.CloseHandle(handle)
-        running = (read_json(LOCK) or {}).get("version", 1)
-        if running >= VERSION:
-            return None
+        if TAKEOVER.exists():
+            time.sleep(0.125)  # the running pet is closing; take its place once it has
+            continue
+        lock = read_json(LOCK)
+        if lock is None and unreadable < 8:
+            # Being rewritten by a pet that just started; read it again rather than
+            # taking it for an old version and asking a current pet to leave.
+            unreadable += 1
+            time.sleep(0.125)
+            continue
+        if (lock or {}).get("version", 1) >= VERSION:
+            return None  # a current pet is running and staying
         TAKEOVER.write_text(str(VERSION), encoding="utf-8")
-        time.sleep(0.25)
+        time.sleep(0.125)
     return None
 
 

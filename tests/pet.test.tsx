@@ -61,8 +61,10 @@ test('the Codex pet shows above the prompt and follows the turn', async ($, on) 
   await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true })
   expect(argvs[0]).toContain('--pet')
   expect(argvs[0]![argvs[0]!.length - 1]).toBe('auto')
-  // The desktop pet is started through `start`, so it outlives the call.
-  expect(argvs.some(a => a[0] === 'cmd' && a.join(' ').includes('pet_overlay.py'))).toBe(true)
+  // The desktop pet is started detached through Start-Process, so the call returns at once.
+  expect(
+    argvs.some(a => a[0] === 'powershell' && /Start-Process 'pyw'.*pet_overlay\.py/.test(a.join(' '))),
+  ).toBe(true)
   expect(sharedState()).toMatchObject({ agent: 'cc', status: 'idle', mood: 'waving', petId: 'guga' })
 
   for (const surface of ['terminal', 'desktop'] as const) {
