@@ -324,8 +324,14 @@ export const register: Register = (on, options) => {
     return { text: now ? `現在的寵物：${now.displayName}` : `切換失敗：${await read($, error)}` }
   })
 
+  // The desktop app lists commands it learns when the session initializes, before
+  // session.start registers /pet-on and /pet-off; commands/*.md put them in that list
+  // as /codex-pet:pet-on and /codex-pet:pet-off, and these hooks answer both spellings
+  // so the files' fallback text never reaches the model.
   on('command.run', { command: 'pet-on' }, async $ => overlayOn($))
+  on('command.run', { command: 'codex-pet:pet-on' }, async $ => overlayOn($))
   on('command.run', { command: 'pet-off' }, async $ => overlayOff($))
+  on('command.run', { command: 'codex-pet:pet-off' }, async $ => overlayOff($))
 
   on('session.end', async ($, e, next) => {
     await update($, mood, () => 'idle')

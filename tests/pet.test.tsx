@@ -104,6 +104,14 @@ test('the Codex pet shows above the prompt and follows the turn', async ($, on) 
   const onCmd = await $.command.run({ command: 'pet-on', args: '', origin: { kind: 'composer' } } as never)
   expect(JSON.stringify(onCmd)).toContain('開啟')
 
+  // Picked from the desktop app's list they arrive as the commands/*.md names.
+  written.clear()
+  const listedOff = await $.command.run({ command: 'codex-pet:pet-off', args: '', origin: { kind: 'composer' } } as never)
+  expect(JSON.stringify(listedOff)).toContain('關閉')
+  expect([...written.keys()].some(path => /[\\/]\.codex-pet[\\/]takeover$/.test(path))).toBe(true)
+  const listedOn = await $.command.run({ command: 'codex-pet:pet-on', args: '', origin: { kind: 'composer' } } as never)
+  expect(JSON.stringify(listedOn)).toContain('開啟')
+
   const listed = await $.command.run({ command: 'pet', args: 'list', origin: { kind: 'composer' } } as never)
   expect(JSON.stringify(listed)).toContain('monthly-salary-cat')
 

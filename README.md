@@ -87,6 +87,8 @@
 | `/pet show` / `/pet hide` | 顯示 / 隱藏 CC 輸入框上方的小寵物（有桌寵時預設隱藏） |
 | `/pet reload` | 重新讀取寵物圖 |
 
+在 Claude 桌面版的指令列表裡，`/pet-on`、`/pet-off` 會顯示成 `/codex-pet:pet-on`、`/codex-pet:pet-off`。兩種寫法效果一樣，都由 mod 直接處理，不會多跑一次模型。
+
 ## 設定
 
 mod 的選項（`userConfig`）：
