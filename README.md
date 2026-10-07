@@ -6,6 +6,33 @@
 
 > 這是個人專案，跟 OpenAI 或 Anthropic 沒有關係。Claude Code 的 mod 介面（function hooks）目前還是 early access，之後的版本可能會變動。
 
+## 截圖
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/desktop-pet.png" alt="桌寵收合時：寵物、角標和最緊急的一張卡片" width="320"><br>平常：寵物、角標，加上最緊急的一張卡片</td>
+    <td align="center"><img src="docs/screenshots/activity-list.png" alt="滑鼠移到寵物上時展開的活動列表" width="320"><br>滑鼠移上去：展開所有 CC 和 Codex 對話</td>
+  </tr>
+</table>
+
+<p align="center"><img src="docs/screenshots/states.png" alt="寵物在各種狀態下的動作：待命、工作中、需要你、完成（未讀）、卡住了、剛完成" width="720"></p>
+
+截圖由桌寵自己的繪圖程式產生，卡片是範例資料。寵物是 [codex-pet-share](https://github.com/portons/codex-pet-share) 專案裡的 Debug Duck（MIT 授權）。
+
+## 跟 Codex 寵物社群通用
+
+這個 mod 不用自己的寵物格式，直接讀 Codex 的寵物資料夾 `${CODEX_HOME:-~/.codex}/pets/<id>/`（`pet.json` + `spritesheet.webp`），所以：
+
+- **Codex 能用的寵物，這裡都能用**：你在 Codex 裡選的、用 hatch-pet 孵的、自己做的，都會自動出現。
+- **v1 和 v2 都支援**：v1 是 1536×1872（9 列），v2 是 1536×2288（9 列 + 16 方向的兩列）。
+- **[codex-pets.net](https://codex-pets.net/) 上的社群寵物可以直接用**。網站上每隻寵物都有安裝指令，裝完就會出現在 `/pet list`：
+
+  ```bash
+  npx codex-pets add <寵物 id>
+  ```
+
+  寵物 id 就是網址裡的那段，例如 `https://codex-pets.net/#/pets/nino` 的 `nino`。這個指令會把寵物裝到 `~/.codex/pets/<id>/`，跟 Codex 和這個 mod 讀的是同一個資料夾，所以裝一次，Codex 和 CC 都看得到。裝好後用 `/pet <id>` 切換，或在 Codex 裡選它。
+
 ## 功能
 
 - **同一隻寵物**：直接讀 Codex 的寵物資料夾，用 hatch-pet 孵出來的寵物 CC 也看得到。預設跟著 Codex 選的寵物；Codex 選的是雲端寵物時，會用 Codex 的遷移紀錄找回本機那份圖。
