@@ -42,9 +42,14 @@ The mod has no pet format of its own: it reads Codex's pet folder, `${CODEX_HOME
 - **Click a card to open the conversation**: `claude://code/continue?session=…` for CC, `codex://threads/…` for Codex. A done card is cleared once opened.
 - **The pet's animation** follows the most urgent card; it jumps when something has just finished and runs left or right while you drag it.
 - **A badge** counts what needs you; hovering the pet expands the list.
-- **Right-click menu**: size (small / medium / large), keep the list open, clear done cards, wave, reload, hide, close.
+- **Any size**: 30% to 300% (100% is medium). The right-click menu has three presets, small (75%), medium and large (130%), and "Custom…" opens a slider the pet resizes along with as you drag it. `/pet-size` sets it too.
+- **Two placement modes** (Placement in the right-click menu, or `/pet-mode`):
+  - **Hover** (the default): the pet stays wherever you drop it.
+  - **Physics**: let go and the pet falls, bounces two or three times and comes to rest above the taskbar. Fling it as you let go and it flies, bouncing off the screen's edges; you can catch it in mid-air. With several monitors it lands on the taskbar of the monitor it is on; an edge with another monitor beyond it is no wall, so you can throw it across.
+- **Right-click menu**: size, placement, keep the list open, clear done cards, wave, reload, hide, close.
 - **`Win+Alt+O`** shows or hides the pet (Codex uses `Win+Alt+P`).
-- Shows still frames when Windows animation effects are turned off.
+- Shows still frames when Windows animation effects are turned off; in physics mode the pet then lands at once, without flying or bouncing.
+- The size, placement mode and position are remembered for next time.
 
 ## Requirements
 
@@ -97,10 +102,14 @@ In the CC prompt:
 | `/pet codex` | Follows the pet selected in Codex again |
 | `/pet-on` | Opens the desktop pet (also `/pet overlay on`) |
 | `/pet-off` | Closes the desktop pet (also `/pet overlay off`); the next new session opens it again |
+| `/pet-size <size>` | Sets the desktop pet's size: a percentage from 30 to 300 (e.g. `/pet-size 150`), or `small` / `medium` / `large` (`小` / `中` / `大`). With no argument, shows the current size. Also `/pet size …` |
+| `/pet-mode <mode>` | Sets the placement mode: `hover` (`懸停`), `physics` (`物理`), or `toggle` (`切換`) between them. With no argument, shows the current mode. Also `/pet mode …` |
 | `/pet show` / `/pet hide` | Shows / hides the small pet above the CC prompt (hidden by default while the desktop pet is on) |
 | `/pet reload` | Reloads the pet's sprites |
 
-In the Claude desktop app's command list, `/pet-on` and `/pet-off` appear as `/codex-pet:pet-on` and `/codex-pet:pet-off`. Both spellings do the same thing and are handled by the mod itself, with no model turn.
+In the Claude desktop app's command list, `/pet-on`, `/pet-off`, `/pet-size` and `/pet-mode` appear as `/codex-pet:pet-on` and so on. Both spellings do the same thing and are handled by the mod itself, with no model turn.
+
+`/pet-size` and `/pet-mode` leave the setting in `~/.codex-pet/request.json`; the desktop pet applies and remembers it within half a second, or, if it is closed, when it next opens.
 
 ## Options
 
@@ -122,10 +131,11 @@ Codex ──(Codex's own conversation logs)── ~/.codex/sessions/... ──�
 
 - `hooks/register.tsx`: the CC mod. It updates its session's status file on CC's events (a turn starting, tool calls, waiting for your approval, a turn ending), sends a heartbeat every 30 seconds, and starts the desktop pet.
 - `overlay/pet_overlay.py`: the desktop pet itself (a Win32 layered window whose whole picture is drawn with Pillow). Only one runs at a time; a newer version takes over from an older one.
+- `overlay/physics.py`: physics mode's arithmetic (gravity, bounces, friction, the speed of a throw) and the size conversions, as plain functions with no window.
 - `overlay/sources.py`: reads the CC status files, the Claude desktop app's session records (for titles and the ids its links take), and Codex's `session_index.jsonl` and conversation logs.
 - `bake/bake_pet.py`: finds the pet to use and cuts its spritesheet into frames.
 
-Everything is read and written on your own computer; nothing is sent anywhere. The pet's position, size and other preferences live in `~/.codex-pet/overlay.json`, and errors are logged to `~/.codex-pet/overlay-error.log`.
+Everything is read and written on your own computer; nothing is sent anywhere. The pet's position, size, placement mode and other preferences live in `~/.codex-pet/overlay.json`, and errors are logged to `~/.codex-pet/overlay-error.log`.
 
 ## Known limitations
 
@@ -139,7 +149,10 @@ Everything is read and written on your own computer; nothing is sent anywhere. T
 ```bash
 claude plugin validate .
 claude plugin test .
+py -3 -m unittest discover -s tests
 ```
+
+The last line runs the tests of the desktop pet's physics and sizes (`tests/test_physics.py`).
 
 ## License
 

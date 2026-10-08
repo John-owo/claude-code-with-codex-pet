@@ -9,9 +9,13 @@ whose whole picture, pet and activity cards, is drawn with Pillow) that:
   with its title, status and what it is doing; hovering the pet expands it;
 - opens the conversation when a card is clicked (claude:// and codex://
   deep links) and clears a finished card once it has been opened;
-- has a badge for what needs you, a right-click menu (size, activity, wave,
-  reload, close), Win+Alt+O to show or hide, a first-time greeting, and
-  still frames when Windows' animation effects are off.
+- has a badge for what needs you, a right-click menu (size, placement,
+  activity, wave, reload, close), Win+Alt+O to show or hide, a first-time
+  greeting, and still frames when Windows' animation effects are off;
+- is any size from 30% to 300%, and either hovers where it is dropped or,
+  in physics mode, falls, bounces and comes to rest above the taskbar (a
+  drag let go while moving throws it). Claude Code's /pet-size and
+  /pet-mode reach it through ~/.codex-pet/request.json.
 
 Only one instance runs; a newer version takes over from an older one.
 """
@@ -19,6 +23,7 @@ Only one instance runs; a newer version takes over from an older one.
 import ctypes
 import ctypes.wintypes as wt
 import json
+import math
 import os
 import re
 import sys
@@ -32,13 +37,15 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "bake"))
 sys.path.insert(0, str(HERE))
 import bake_pet  # noqa: E402  (pet folders, Codex's selection, cloud ids)
+import physics  # noqa: E402
 import sources  # noqa: E402
 
-VERSION = 4
+VERSION = 5
 SHARED = sources.SHARED
 PREFS = SHARED / "overlay.json"
 LOCK = SHARED / "overlay.lock"
 TAKEOVER = SHARED / "takeover"
+REQUEST = SHARED / "request.json"  # settings sent by CC's /pet-size and /pet-mode
 
 CELL_W, CELL_H = bake_pet.CELL_W, bake_pet.CELL_H
 ROW = {name: row for row, (name, _) in enumerate(bake_pet.STATES)}
@@ -59,9 +66,10 @@ TEXT = (24, 24, 27)
 TEXT_SECONDARY = (110, 110, 118)
 AGENT_TEXT = {"cc": "CC", "codex": "Codex"}
 AGENT_COLOR = {"cc": (217, 119, 87), "codex": (120, 132, 150)}
-SIZES = {"小": 0.45, "中": 0.62, "大": 0.8}
+MODES = ("hover", "physics")
 MAX_CARDS = 6
 DONE_JUMP_S = 2.5
+FRAME_MS = 16  # physics steps, while the pet moves
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
@@ -71,6 +79,7 @@ WS_EX_LAYERED, WS_EX_TOOLWINDOW = 0x00080000, 0x00000080
 ULW_ALPHA, AC_SRC_ALPHA = 2, 1
 SPI_GETCLIENTAREAANIMATION = 0x1042
 VK_LWIN, VK_RWIN, VK_MENU, VK_O = 0x5B, 0x5C, 0x12, 0x4F
+MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTONEAREST = 0, 2
 
 
 class BLENDFUNCTION(ctypes.Structure):
@@ -85,6 +94,10 @@ class BITMAPINFOHEADER(ctypes.Structure):
                 ("biClrUsed", wt.DWORD), ("biClrImportant", wt.DWORD)]
 
 
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", wt.RECT), ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
+
+
 user32.GetDC.restype = wt.HDC
 user32.GetDC.argtypes = [wt.HWND]
 user32.ReleaseDC.argtypes = [wt.HWND, wt.HDC]
@@ -96,6 +109,9 @@ user32.UpdateLayeredWindow.argtypes = [
     wt.HWND, wt.HDC, ctypes.POINTER(wt.POINT), ctypes.POINTER(wt.SIZE), wt.HDC,
     ctypes.POINTER(wt.POINT), wt.COLORREF, ctypes.POINTER(BLENDFUNCTION), wt.DWORD]
 user32.GetAsyncKeyState.restype = ctypes.c_short
+user32.MonitorFromPoint.restype = wt.HANDLE
+user32.MonitorFromPoint.argtypes = [wt.POINT, wt.DWORD]
+user32.GetMonitorInfoW.argtypes = [wt.HANDLE, ctypes.POINTER(MONITORINFO)]
 gdi32.CreateCompatibleDC.restype = wt.HDC
 gdi32.CreateCompatibleDC.argtypes = [wt.HDC]
 gdi32.CreateDIBSection.restype = wt.HBITMAP
@@ -160,6 +176,19 @@ def animations_on() -> bool:
     return bool(flag.value)
 
 
+def work_area(x, y) -> wt.RECT:
+    """The work area (the screen less the taskbar) of the monitor at or nearest (x, y)."""
+    monitor = user32.MonitorFromPoint(wt.POINT(int(x), int(y)), MONITOR_DEFAULTTONEAREST)
+    info = MONITORINFO(ctypes.sizeof(MONITORINFO))
+    if monitor and user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+        return info.rcWork
+    return wt.RECT(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1))
+
+
+def has_monitor(x, y) -> bool:
+    return bool(user32.MonitorFromPoint(wt.POINT(int(x), int(y)), MONITOR_DEFAULTTONULL))
+
+
 def elapsed(seconds: float) -> str:
     s = max(0, int(seconds))
     if s < 60:
@@ -192,6 +221,11 @@ class Overlay:
         self.is_open = False  # the stack expanded
         self.is_hidden = False
         self.drag, self.drag_dir, self.dragged = None, None, False
+        self.samples = []  # (time, x, y) while dragging, for the throw
+        self.mode = self.prefs.get("mode") if self.prefs.get("mode") in MODES else "hover"
+        self.fly = None  # physics mode, while the pet moves: position, velocity, last step
+        self.fly_job = None
+        self.size_dialog = None
         self.hotkey_down = False
         self.animate = animations_on()
         self.origin = (0, 0)
@@ -212,13 +246,15 @@ class Overlay:
         self.root.bind("<ButtonRelease-1>", self.on_release)
         self.root.bind("<Double-Button-1>", self.on_double)
         self.root.bind("<Button-3>", self.on_menu)
+        self.size_var = tk.IntVar(self.root)
+        self.mode_var = tk.StringVar(self.root, self.mode)
 
-        self.set_size(self.prefs.get("size", "中"), save=False)
+        self.set_size(self.prefs.get("size"), save=False)
         self.load_pet()
         sw, sh = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
         # The pet's bottom-right corner; the window grows from it.
         self.anchor = self.prefs.get("anchor") or [sw - int(260 * self.dpi), sh - int(100 * self.dpi)]
-        self.poll()
+        self.poll()  # in physics mode, also lets the pet fall to the floor
         self.watch_pointer()
         self.tick()
 
@@ -232,19 +268,39 @@ class Overlay:
                 continue
         return ImageFont.load_default()
 
-    def set_size(self, name, save=True):
-        self.size_name = name if name in SIZES else "中"
-        self.scale = SIZES[self.size_name] * self.dpi
+    def set_size(self, value, save=True):
+        """Any size from 30% to 300% (100% is the old 中); prefs from before keep their size."""
+        self.size_pct = physics.parse_size(value)
+        self.size_var.set(self.size_pct)
+        self.scale = physics.scale_for(self.size_pct) * self.dpi
         u = self.dpi
         self.f_title = self.font(int(12.5 * u), bold=True)
         self.f_text = self.font(int(11 * u))
         self.f_small = self.font(int(9.5 * u), bold=True)
         self.card_w = int(300 * u)
         self.card_cache.clear()
+        if save:
+            self.save_prefs(size=self.size_pct)
         if self.pet_id:
             self.load_pet(force=True)
+            self.start_physics()  # a bigger pet may now reach past a wall
+
+    def resize(self, value):
+        if physics.parse_size(value) != self.size_pct:
+            self.set_size(value)
+            self.redraw()
+
+    def set_mode(self, mode, save=True):
+        """hover: stays where it is dropped. physics: falls, bounces and rests on the taskbar."""
+        self.mode = mode if mode in MODES else "hover"
+        self.mode_var.set(self.mode)
         if save:
-            self.save_prefs(size=self.size_name)
+            self.save_prefs(mode=self.mode)
+        if self.mode == "physics":
+            self.start_physics()
+        elif self.fly:
+            self.stop_physics()
+            self.save_prefs(anchor=self.anchor)
 
     def wanted_pet(self):
         for row in self.rows:
@@ -319,11 +375,36 @@ class Overlay:
         self.cards = cards
         if self.wanted_pet() not in (None, self.pet_id):
             self.load_pet()
+        self.take_request()
+        # Physics mode: fall again whenever the floor moved (taskbar, resolution) or a resize
+        # left the pet past a wall.
+        self.start_physics()
         self.root.after(500, self.poll)
+
+    def take_request(self):
+        """Applies a setting CC's /pet-size or /pet-mode left (hooks/register.tsx writes it)."""
+        if not REQUEST.exists():
+            return
+        request = read_json(REQUEST)
+        try:
+            if request is None and time.time() - REQUEST.stat().st_mtime < 5:
+                return  # being written; read it at the next poll
+            REQUEST.unlink()
+        except OSError:
+            return
+        if not isinstance(request, dict):
+            return
+        if "size" in request:
+            self.resize(request["size"])
+        if request.get("mode") in MODES:
+            self.set_mode(request["mode"])
+            self.redraw()
 
     def mascot(self):
         if self.drag_dir:
             return self.drag_dir
+        if self.fly:
+            return "jumping"
         now = time.monotonic()
         if now < self.wave_until:
             return "waving"
@@ -366,7 +447,7 @@ class Overlay:
 
     def draw_card(self, row, hovered):
         key = (row.key, row.status, row.title, row.action, elapsed(time.time() - row.status_at),
-               hovered, self.size_name)
+               hovered)
         if key in self.card_cache:
             return self.card_cache[key]
         u, w = self.dpi, self.card_w
@@ -453,7 +534,9 @@ class Overlay:
         if self.is_open and pieces:
             # A barely visible backdrop keeps the pointer over the stack between cards.
             ImageDraw.Draw(canvas).rectangle((0, 0, width, stack_h), fill=(0, 0, 0, 1))
-        right = self.anchor[0] > user32.GetSystemMetrics(0) // 2
+        # Cards on the side of the pet toward the middle of its monitor.
+        work = work_area(self.anchor[0] - pw / 2, self.anchor[1] - 1)
+        right = self.anchor[0] - pw / 2 > (work.left + work.right) / 2
         hits = []
         y = 0
         for kind, img, data in pieces:
@@ -553,7 +636,7 @@ class Overlay:
         now = time.monotonic()
         if over:
             self.hover_seen = now
-            if not self.is_open and not self.drag and self.cards:
+            if not self.is_open and not self.drag and not self.fly and self.cards:
                 self.is_open = True
                 self.redraw()
         elif self.is_open and not self.prefs.get("pinned") and now - self.hover_seen > 0.6:
@@ -577,12 +660,15 @@ class Overlay:
         self.redraw()
 
     def on_press(self, e):
+        self.stop_physics()  # caught mid-air
         self.drag = (e.x_root, e.y_root, self.anchor[:], e.x_root)
         self.dragged = False
+        self.samples = [(time.monotonic(), e.x_root, e.y_root)]
 
     def on_drag(self, e):
         if not self.drag:
             return
+        self.samples = self.samples[-11:] + [(time.monotonic(), e.x_root, e.y_root)]
         sx, sy, start, lastx = self.drag
         if not self.dragged and abs(e.x_root - sx) + abs(e.y_root - sy) < 5:
             return
@@ -599,6 +685,8 @@ class Overlay:
         self.drag, self.drag_dir, self.dragged = None, None, False
         if was_drag:
             self.save_prefs(anchor=self.anchor)
+            # Physics mode: let go while moving and it is thrown.
+            self.start_physics(physics.throw_velocity(self.samples, time.monotonic(), self.dpi))
             return
         kind, row = self.hit(e.x, e.y)
         if kind == "close":
@@ -609,6 +697,71 @@ class Overlay:
             self.is_open = not self.is_open
             self.hover_seen = time.monotonic()
         self.redraw()
+        self.start_physics()  # a click that caught it mid-air lets it go again
+
+    # ---- physics mode --------------------------------------------------
+    def bounds(self):
+        """The walls, ceiling and floor (taskbar) of the monitor under the pet's feet.
+
+        A side with another monitor beyond it is open, so a throw can cross to it.
+        """
+        w, _ = self.cell
+        fx, fy = self.anchor[0] - w / 2, self.anchor[1] - 1
+        work = work_area(fx, fy)
+        return physics.Bounds(
+            left=-math.inf if has_monitor(work.left - 1, fy) else work.left,
+            top=-math.inf if has_monitor(fx, work.top - 1) else work.top,
+            right=math.inf if has_monitor(work.right, fy) else work.right,
+            floor=work.bottom,
+        )
+
+    def start_physics(self, velocity=(0.0, 0.0)):
+        """Physics mode: lets the pet fall (or fly, if thrown) until it rests on the floor."""
+        if self.mode != "physics" or self.drag or self.fly or not self.frames:
+            return
+        bounds = self.bounds()
+        if velocity == (0.0, 0.0) and physics.settled(self.anchor, self.cell, bounds):
+            return
+        if not self.animate:
+            # Animation effects off: no flight or bounce, it just lands.
+            self.anchor = [round(v) for v in physics.land(self.anchor, self.cell, bounds)]
+            self.save_prefs(anchor=self.anchor)
+            self.redraw()
+            return
+        self.fly = {"pos": tuple(self.anchor), "vel": velocity, "at": time.monotonic()}
+        if not self.prefs.get("pinned"):
+            self.is_open = False  # the cards ride along collapsed
+        self.fly_job = self.root.after(FRAME_MS, self.physics_step)
+
+    def physics_step(self):
+        self.fly_job = None
+        fly = self.fly
+        if fly is None:
+            return
+        now = time.monotonic()
+        # Keeps to real time when a frame comes late, in steps short enough not to pass
+        # through the floor; a long stall (a menu open) does not teleport the pet.
+        dt = min(0.1, now - fly["at"])
+        n = max(1, math.ceil(dt * 120))
+        pos, vel, bounds = fly["pos"], fly["vel"], self.bounds()
+        for _ in range(n):
+            pos, vel, resting = physics.step(pos, vel, self.cell, bounds, dt / n, self.dpi)
+            if resting:
+                break
+        self.fly = {"pos": pos, "vel": vel, "at": now}
+        self.anchor = [round(pos[0]), round(pos[1])]
+        if resting:
+            self.fly = None
+            self.save_prefs(anchor=self.anchor)
+        else:
+            self.fly_job = self.root.after(FRAME_MS, self.physics_step)
+        self.redraw()
+
+    def stop_physics(self):
+        self.fly = None
+        if self.fly_job:
+            self.root.after_cancel(self.fly_job)
+            self.fly_job = None
 
     def on_double(self, e):
         kind, _ = self.hit(e.x, e.y)
@@ -618,10 +771,18 @@ class Overlay:
     def on_menu(self, e):
         menu = tk.Menu(self.root, tearoff=0)
         sizes = tk.Menu(menu, tearoff=0)
-        for name in SIZES:
-            sizes.add_radiobutton(label=name, value=name, variable=tk.StringVar(value=self.size_name),
-                                  command=lambda n=name: (self.set_size(n), self.redraw()))
+        for name, pct in physics.SIZE_PRESETS.items():
+            sizes.add_radiobutton(label=f"{name}（{pct}%）", value=pct, variable=self.size_var,
+                                  command=lambda p=pct: self.resize(p))
+        sizes.add_separator()
+        sizes.add_command(label=f"自訂…（目前 {self.size_pct}%）", command=self.ask_size)
         menu.add_cascade(label="大小", menu=sizes)
+        modes = tk.Menu(menu, tearoff=0)
+        modes.add_radiobutton(label="懸停：拖到哪停到哪", value="hover", variable=self.mode_var,
+                              command=lambda: self.set_mode("hover"))
+        modes.add_radiobutton(label="物理：放開會掉下來、彈跳", value="physics", variable=self.mode_var,
+                              command=lambda: self.set_mode("physics"))
+        menu.add_cascade(label="擺放模式", menu=modes)
         pinned = bool(self.prefs.get("pinned"))
         menu.add_command(label=("取消固定活動列表" if pinned else "固定展開活動列表"),
                          command=lambda: self.save_prefs(pinned=not pinned))
@@ -633,6 +794,71 @@ class Overlay:
         menu.add_separator()
         menu.add_command(label="關閉桌寵", command=self.root.destroy)
         menu.tk_popup(e.x_root, e.y_root)
+
+    def ask_size(self):
+        """A small window to pick any size; the pet follows the slider as it moves."""
+        if self.size_dialog is not None:
+            self.size_dialog.lift()
+            self.size_dialog.focus_force()
+            return
+        from tkinter import ttk
+        before = self.size_pct
+        win = self.size_dialog = tk.Toplevel(self.root)
+        win.title("寵物大小")
+        win.attributes("-topmost", True)
+        win.resizable(False, False)
+        value = tk.IntVar(win, before)
+        pending = []
+
+        def typed():
+            try:
+                return int(value.get())
+            except (tk.TclError, ValueError):
+                return None
+
+        def preview(*_):
+            for job in pending:
+                win.after_cancel(job)
+            pending.clear()
+            pct = typed()
+            if pct is not None and physics.SIZE_MIN <= pct <= physics.SIZE_MAX:
+                pending.append(win.after(150, lambda: self.resize(pct)))
+
+        def close(keep):
+            for job in pending:
+                win.after_cancel(job)
+            pct = typed() if keep else None
+            win.destroy()
+            self.size_dialog = None
+            self.resize(before if pct is None else pct)
+
+        frame = ttk.Frame(win, padding=int(12 * self.dpi))
+        frame.pack()
+        ttk.Label(frame, text=f"{physics.SIZE_MIN}%～{physics.SIZE_MAX}%（100% 是「中」）").pack(anchor="w")
+        row = ttk.Frame(frame)
+        row.pack(fill="x", pady=int(8 * self.dpi))
+        tk.Scale(row, from_=physics.SIZE_MIN, to=physics.SIZE_MAX, orient="horizontal", variable=value,
+                 showvalue=False, length=int(220 * self.dpi)).pack(side="left")
+        box = ttk.Spinbox(row, from_=physics.SIZE_MIN, to=physics.SIZE_MAX, increment=5, textvariable=value, width=5)
+        box.pack(side="left", padx=(int(8 * self.dpi), 0))
+        ttk.Label(row, text="%").pack(side="left")
+        buttons = ttk.Frame(frame)
+        buttons.pack(anchor="e")
+        ttk.Button(buttons, text="取消", command=lambda: close(False)).pack(side="right")
+        ttk.Button(buttons, text="確定", command=lambda: close(True)).pack(side="right", padx=(0, int(6 * self.dpi)))
+        value.trace_add("write", preview)
+        win.bind("<Return>", lambda e: close(True))
+        win.bind("<Escape>", lambda e: close(False))
+        win.protocol("WM_DELETE_WINDOW", lambda: close(False))
+        # Beside the pet, inside its monitor.
+        win.update_idletasks()
+        work = work_area(self.anchor[0], self.anchor[1] - 1)
+        x = min(max(self.anchor[0] - win.winfo_reqwidth(), work.left), work.right - win.winfo_reqwidth())
+        y = min(max(self.anchor[1] - self.cell[1] - win.winfo_reqheight() - int(40 * self.dpi), work.top),
+                work.bottom - win.winfo_reqheight())
+        win.geometry(f"+{x}+{y}")
+        box.focus_set()
+        win.focus_force()
 
     def clear_done(self):
         for row in [c for c in self.cards if c.status in ("ready", "blocked")]:

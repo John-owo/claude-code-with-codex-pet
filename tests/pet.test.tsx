@@ -120,6 +120,63 @@ test('the Codex pet shows above the prompt and follows the turn', async ($, on) 
   await ui.unmount()
 })
 
+test('/pet-size and /pet-mode leave the desktop pet a request it applies and remembers', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  mock.env(on, { USERPROFILE: 'C:/Users/test' })
+  // A small file system in memory; the engine hands paths over in the platform's own spelling.
+  const files = new Map<string, string>()
+  const key = (path: string) => path.replace(/\\/g, '/').replace(/^.*\/\.codex-pet\//, '')
+  on('fs.write', ($, e) => {
+    files.set(key(e.path), e.text)
+    return { value: undefined }
+  })
+  on('fs.read', ($, e, next) => (files.has(key(e.path)) ? { value: files.get(key(e.path))! } : next(e)))
+  on('process.run', () => ({
+    value: { exitCode: 0, stdout: JSON.stringify(BAKED), stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+  }))
+  on('command.register', () => ({ value: {} as never }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'sess-3' }))
+  on('command.run', () => ({ text: 'engine' }))
+  const run = async (command: string, args = '') =>
+    JSON.stringify(await $.command.run({ command, args, origin: { kind: 'composer' } } as never))
+  const request = () => JSON.parse(files.get('request.json') ?? '{}')
+
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true })
+
+  // With no argument they say what the pet has now: here prefs from before sizes were percentages.
+  files.set('overlay.json', JSON.stringify({ size: '大', anchor: [100, 100] }))
+  expect(await run('pet-size')).toContain('129%')
+  expect(await run('pet-mode')).toContain('懸停')
+
+  expect(await run('pet-size', '150')).toContain('150%')
+  expect(request()).toEqual({ size: 150 })
+  // A second setting before the pet took the first keeps both.
+  expect(await run('codex-pet:pet-mode', '物理')).toContain('物理')
+  expect(request()).toEqual({ size: 150, mode: 'physics' })
+  expect(await run('pet-size')).toContain('150%')
+  expect(await run('pet-mode', '切換')).toContain('懸停')
+  expect(request().mode).toBe('hover')
+
+  // The pet took the request and saved it in its prefs.
+  files.delete('request.json')
+  files.set('overlay.json', JSON.stringify({ size: 87, mode: 'physics' }))
+  expect(await run('pet', 'size')).toContain('87%')
+  expect(await run('pet', 'mode')).toContain('物理')
+
+  // Sizes as words, through /pet too; nonsense and out-of-range sizes change nothing.
+  expect(await run('pet', 'size 小')).toContain('75%')
+  expect(await run('codex-pet:pet-size', 'large')).toContain('130%')
+  expect(await run('pet-size', '200%')).toContain('200%')
+  expect(request()).toEqual({ size: 200 })
+  for (const bad of ['1000', '10', 'huge']) {
+    expect(await run('pet-size', bad)).toContain('不是可以用的大小')
+  }
+  expect(await run('pet-mode', 'sideways')).toContain('沒有「sideways」')
+  expect(request()).toEqual({ size: 200 })
+})
+
 test('with the desktop pet on, the band above the prompt stays off', async ($, on) => {
   mock.clock(on)
   mock.store(on)

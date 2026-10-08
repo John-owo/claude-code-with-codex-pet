@@ -42,9 +42,14 @@
 - **點卡片跳過去**：CC 用 `claude://code/continue?session=…`，Codex 用 `codex://threads/…`。打開過的「完成」卡片會自動清掉。
 - **寵物動作**跟著最緊急的那張卡片走；剛完成會跳一下，拖曳時會往左右跑。
 - **角標**顯示有幾件事需要你處理；滑鼠移到寵物上會展開列表。
-- **右鍵選單**：大小（小 / 中 / 大）、固定展開、清掉已完成的卡片、揮手、重新載入、隱藏、關閉。
+- **任意大小**：30%～300%（100% 是「中」）。右鍵選單有小（75%）、中、大（130%）三種預設，選「自訂…」會開一個滑桿視窗，拉的時候寵物會跟著變大變小。也可以用 `/pet-size` 指令設定。
+- **兩種擺放模式**（右鍵選單的「擺放模式」或 `/pet-mode`）：
+  - **懸停**（預設）：拖到哪就停在哪。
+  - **物理**：放開後會掉下來，落地彈 2～3 下，最後停在工作列上方。拖著甩出去再放開，寵物會飛出去，撞到螢幕邊緣會反彈；半空中可以抓住它。多螢幕時會落在寵物所在那個螢幕的工作列上；旁邊有其他螢幕的那一側不算牆，可以丟過去。
+- **右鍵選單**：大小、擺放模式、固定展開、清掉已完成的卡片、揮手、重新載入、隱藏、關閉。
 - **`Win+Alt+O`** 顯示或隱藏桌寵（跟 Codex 的 `Win+Alt+P` 錯開）。
-- Windows 關掉「動畫效果」時只顯示靜止畫面。
+- Windows 關掉「動畫效果」時只顯示靜止畫面；物理模式下會直接落地，不會飛行或彈跳。
+- 大小、擺放模式和位置都會記住，下次打開還是一樣。
 
 ## 需求
 
@@ -97,10 +102,14 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 | `/pet codex` | 回到跟著 Codex 的選擇 |
 | `/pet-on` | 打開桌寵（也可用 `/pet overlay on`） |
 | `/pet-off` | 關掉桌寵（也可用 `/pet overlay off`）（下次開新對話會再自動打開） |
+| `/pet-size <大小>` | 設定桌寵大小：30～300 的百分比（例如 `/pet-size 150`），或 `小` / `中` / `大`。不加參數會顯示目前大小。也可用 `/pet size …` |
+| `/pet-mode <模式>` | 切換擺放模式：`懸停`、`物理`，或 `切換`（在兩者之間切換）。不加參數會顯示目前模式。也可用 `/pet mode …` |
 | `/pet show` / `/pet hide` | 顯示 / 隱藏 CC 輸入框上方的小寵物（有桌寵時預設隱藏） |
 | `/pet reload` | 重新讀取寵物圖 |
 
-在 Claude 桌面版的指令列表裡，`/pet-on`、`/pet-off` 會顯示成 `/codex-pet:pet-on`、`/codex-pet:pet-off`。兩種寫法效果一樣，都由 mod 直接處理，不會多跑一次模型。
+在 Claude 桌面版的指令列表裡，`/pet-on`、`/pet-off`、`/pet-size`、`/pet-mode` 會顯示成 `/codex-pet:pet-on` 這類寫法。兩種寫法效果一樣，都由 mod 直接處理，不會多跑一次模型。
+
+`/pet-size` 和 `/pet-mode` 會把設定寫進 `~/.codex-pet/request.json`，桌寵在半秒內套用並記住。桌寵沒開的話，下次打開時套用。
 
 ## 設定
 
@@ -122,10 +131,11 @@ Codex ──(Codex 自己寫的對話紀錄)── ~/.codex/sessions/... ──�
 
 - `hooks/register.tsx`：CC 的 mod。依照 CC 的事件（開始回合、呼叫工具、等你核准、回合結束）更新這個對話的狀態檔，每 30 秒送一次心跳；也負責啟動桌寵。
 - `overlay/pet_overlay.py`：桌寵視窗本身（Win32 layered window，整個畫面用 Pillow 畫）。只會同時跑一隻；新版本會自動接手舊版本。
+- `overlay/physics.py`：物理模式的計算（重力、反彈、摩擦、甩出去的初速）和大小的換算，都是不依賴視窗的純函式。
 - `overlay/sources.py`：讀 CC 的狀態檔、Claude 桌面版的對話紀錄（拿標題和跳轉用的 id），以及 Codex 的 `session_index.jsonl` 和對話紀錄。
 - `bake/bake_pet.py`：找出要用的寵物，並把 spritesheet 切成影格。
 
-所有資料都只在你自己的電腦上讀寫，不會傳到任何地方。桌寵的位置、大小等偏好存在 `~/.codex-pet/overlay.json`，錯誤紀錄在 `~/.codex-pet/overlay-error.log`。
+所有資料都只在你自己的電腦上讀寫，不會傳到任何地方。桌寵的位置、大小、擺放模式等偏好存在 `~/.codex-pet/overlay.json`，錯誤紀錄在 `~/.codex-pet/overlay-error.log`。
 
 ## 已知限制
 
@@ -139,7 +149,10 @@ Codex ──(Codex 自己寫的對話紀錄)── ~/.codex/sessions/... ──�
 ```bash
 claude plugin validate .
 claude plugin test .
+py -3 -m unittest discover -s tests
 ```
+
+最後一行跑桌寵物理和大小計算的測試（`tests/test_physics.py`）。
 
 ## 授權
 
