@@ -55,25 +55,36 @@ The mod has no pet format of its own: it reads Codex's pet folder, `${CODEX_HOME
 
 ## Install
 
-1. Clone this repository to a fixed place, for example:
+In PowerShell:
 
-   ```bash
-   git clone https://github.com/John-owo/claude-code-with-codex-pet.git "%USERPROFILE%\.claude\mods\codex-pet"
-   ```
+```powershell
+git clone https://github.com/John-owo/claude-code-with-codex-pet.git "$env:USERPROFILE\.claude\mods\codex-pet"
+cd "$env:USERPROFILE\.claude\mods\codex-pet"
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
 
-2. Add the folder to `env` in `~/.claude/settings.json`, so every CC session loads it:
+`install.ps1`:
 
-   ```json
-   {
-     "env": {
-       "CLAUDE_CODE_PLUGIN_DIRS": "C:\\Users\\<your user>\\.claude\\mods\\codex-pet"
-     }
-   }
-   ```
+1. Checks for the Python launcher (`py`), tkinter and Pillow, and offers to install Pillow with pip when it is missing.
+2. Adds this folder to `env.CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, so every CC session loads it. Your other settings are kept, and the file is backed up to `settings.json.bak-codex-pet` first.
+3. Checks that `~/.codex/pets` has a pet.
 
-   Separate it from other folders already there with `;`.
+Then start a new CC session and the pet appears. To remove it, run `powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall`.
 
-3. Start a new CC session; the pet appears on its own.
+<details>
+<summary>Manual install</summary>
+
+Clone the repository to a fixed place, then add the folder to `env` in `~/.claude/settings.json` (separate it from folders already there with `;`):
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_PLUGIN_DIRS": "C:\\Users\\<your user>\\.claude\\mods\\codex-pet"
+  }
+}
+```
+
+</details>
 
 ## Commands
 

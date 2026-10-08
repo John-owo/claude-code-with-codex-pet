@@ -55,25 +55,36 @@
 
 ## 安裝
 
-1. 把這個 repo clone 到固定的位置，例如：
+在 PowerShell 裡執行：
 
-   ```bash
-   git clone https://github.com/John-owo/claude-code-with-codex-pet.git "%USERPROFILE%\.claude\mods\codex-pet"
-   ```
+```powershell
+git clone https://github.com/John-owo/claude-code-with-codex-pet.git "$env:USERPROFILE\.claude\mods\codex-pet"
+cd "$env:USERPROFILE\.claude\mods\codex-pet"
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
 
-2. 在 `~/.claude/settings.json` 的 `env` 加上這個資料夾，讓每個 CC 對話都載入它：
+`install.ps1` 會：
 
-   ```json
-   {
-     "env": {
-       "CLAUDE_CODE_PLUGIN_DIRS": "C:\\Users\\<你的帳號>\\.claude\\mods\\codex-pet"
-     }
-   }
-   ```
+1. 檢查 Python 啟動器（`py`）、tkinter 和 Pillow；缺 Pillow 時問你要不要用 pip 裝。
+2. 把這個資料夾加進 `~/.claude/settings.json` 的 `env.CLAUDE_CODE_PLUGIN_DIRS`，讓每個 CC 對話都載入它。其他設定都會保留，修改前會先備份成 `settings.json.bak-codex-pet`。
+3. 檢查 `~/.codex/pets` 裡有沒有寵物。
 
-   已經有其他資料夾的話，用 `;` 隔開。
+裝好後開一個新的 CC 對話，桌寵就會出現。要移除的話，執行 `powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall`。
 
-3. 開一個新的 CC 對話，桌寵會自動出現。
+<details>
+<summary>手動安裝</summary>
+
+把 repo clone 到固定的位置，再在 `~/.claude/settings.json` 的 `env` 加上這個資料夾（已經有其他資料夾的話，用 `;` 隔開）：
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_PLUGIN_DIRS": "C:\\Users\\<你的帳號>\\.claude\\mods\\codex-pet"
+  }
+}
+```
+
+</details>
 
 ## 指令
 
