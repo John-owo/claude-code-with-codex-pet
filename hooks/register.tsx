@@ -433,7 +433,10 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // A subagent's run is a turn of its own loop (it carries agentId); only the main loop's
+  // turns move this session's card, or a finished subagent would read as the session done.
   on('turn.start', async ($, e, next) => {
+    if (e.agentId !== undefined) return next(e)
     inTurn = true
     isAsking = false
     edited = new Set()
@@ -483,6 +486,7 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId !== undefined) return next(e)
     inTurn = false
     isAsking = false
     const said = e.answer.trim().split('\n').find(line => line.trim())?.replace(/[*#`>]/g, '').trim() ?? ''

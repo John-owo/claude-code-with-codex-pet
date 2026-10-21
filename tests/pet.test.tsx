@@ -83,6 +83,11 @@ test('the Codex pet shows above the prompt and follows the turn', async ($, on) 
   const turn = { text: '幫我整理資料夾', turnId: 't1' } as never
   await $.turn.start(turn)
   expect(sharedState()).toMatchObject({ status: 'running', firstPrompt: '幫我整理資料夾' })
+  // A subagent's run is its own turn; finishing it is not the session's answer.
+  await $.turn.start({ text: '列出資料夾', turnId: 's1', agentId: 'a1' } as never)
+  await $.turn.complete({ reason: 'answer', answer: '子代理的報告', durationMs: 5, turnId: 's1', agentId: 'a1' } as never)
+  expect(sharedState()).toMatchObject({ status: 'running', firstPrompt: '幫我整理資料夾' })
+  expect(sharedState().mood).not.toBe('jumping')
   await $.turn.complete({ reason: 'answer', answer: '**整理好了**，共 3 個資料夾', durationMs: 10, turnId: 't1' } as never)
   expect(sharedState()).toMatchObject({ status: 'ready', action: '整理好了，共 3 個資料夾' })
 
