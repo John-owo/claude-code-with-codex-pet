@@ -101,7 +101,7 @@ class ClaudeCodeSource:
             rows.append(Activity(
                 key=f"cc:{s.get('id')}", agent="cc", title=title, status=s.get("status", "idle"),
                 action=s.get("action") or "", status_at=s.get("statusAt", 0) / 1000, url=url,
-                pet_id=s.get("petId") or "", extra={"updatedAt": s.get("updatedAt", 0)},
+                pet_id=(s.get("petId") or "") if s.get("petPinned") else "", extra={"updatedAt": s.get("updatedAt", 0)},
             ))
         return rows
 

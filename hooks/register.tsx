@@ -111,6 +111,7 @@ async function publish($: EngineInterface, ended = false) {
     mood: await read($, mood),
     // Only a pet chosen here overrides Codex's choice on the desktop pet.
     petId: pinned ? (current?.id ?? null) : null,
+    petPinned: pinned, // older builds always wrote petId, which would pin every pet to the one they baked
     updatedAt: Date.now(),
   }
   try {
