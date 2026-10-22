@@ -310,11 +310,11 @@ class Overlay:
         return local
 
     def load_pet(self, force=False):
-        pets = bake_pet.list_pets(self.home / "pets")
+        pid = self.wanted_pet()  # first: it copies a cloud pet out of Codex's cache
+        pets = bake_pet.all_pets(self.home)
         if not pets:
             return
         by_id = {pid: (meta, sheet) for pid, meta, sheet in pets}
-        pid = self.wanted_pet()
         if pid not in by_id:
             pid = pets[0][0]
         if pid == self.pet_id and not force:

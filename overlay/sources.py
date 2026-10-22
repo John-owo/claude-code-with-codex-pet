@@ -279,7 +279,15 @@ class CodexSource:
         except ValueError:
             return
         t.cwd = p.get("cwd") or ""
-        t.is_subagent = p.get("thread_source") == "subagent"
+        # Only threads the user started count. Codex also runs helper threads of its own:
+        # spawned subagents ("subagent") and approval reviews ("guardian_review"), each
+        # with a parent thread.
+        source = p.get("thread_source")
+        t.is_subagent = bool(
+            (source and source != "user")
+            or p.get("parent_thread_id")
+            or (isinstance(p.get("source"), dict) and "subagent" in p["source"])
+        )
 
 
 def _epoch(stamp) -> float:

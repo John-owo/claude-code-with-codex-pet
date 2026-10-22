@@ -73,6 +73,8 @@ let activity: { status: Status; action: string; statusAt: number; firstPrompt: s
 }
 let edited = new Set<string>()
 let available: Baked['available'] = []
+/** Set when /pet <id> or the `pet` option chose a pet; otherwise the desktop pet follows Codex. */
+let pinned = false
 let inTurn = false
 let isAsking = false
 let settle: { cancel: () => void } | undefined
@@ -107,7 +109,8 @@ async function publish($: EngineInterface, ended = false) {
     action: activity.action,
     statusAt: activity.statusAt,
     mood: await read($, mood),
-    petId: current?.id ?? null,
+    // Only a pet chosen here overrides Codex's choice on the desktop pet.
+    petId: pinned ? (current?.id ?? null) : null,
     updatedAt: Date.now(),
   }
   try {
@@ -297,6 +300,7 @@ function pythons(): string[][] {
 
 async function bake($: EngineInterface) {
   const chosen = ((await $.store.get(STORE_PET)) as string | undefined) || config.pet || 'auto'
+  pinned = chosen !== 'auto'
   const script = `${$.plugin.root}/bake/bake_pet.py`
   let lastError = 'no Python found'
 
