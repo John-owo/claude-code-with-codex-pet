@@ -19,7 +19,16 @@ from pathlib import Path
 
 SHARED = Path.home() / ".codex-pet"
 CC_DIR = SHARED / "sessions"
-CLAUDE_SESSIONS = Path(os.environ.get("APPDATA", Path.home() / "AppData/Roaming")) / "Claude" / "claude-code-sessions"
+def _session_dirs():
+    """Where the desktop app keeps its Code-tab records: Roaming for the classic install, Local/Claude-Data/<package> for the packaged one."""
+    dirs = [Path(os.environ.get("APPDATA", Path.home() / "AppData/Roaming")) / "Claude" / "claude-code-sessions"]
+    local = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "Claude-Data"
+    if local.is_dir():
+        dirs += sorted(local.glob("*/claude-code-sessions"))
+    return [d for d in dirs if d.is_dir()]
+
+
+CLAUDE_SESSIONS = _session_dirs()
 
 CC_GONE_S = 150  # the mod heartbeats every 30 s
 CODEX_RECENT_S = 6 * 3600
@@ -55,7 +64,7 @@ class ClaudeCodeSource:
 
     def _desktop_records(self, wanted):
         """The desktop app's record of each Code-tab session: its title and local id."""
-        if not CLAUDE_SESSIONS.is_dir():
+        if not CLAUDE_SESSIONS:
             return
         missing = [w for w in wanted if w not in self.desktop]
         if not missing and time.time() - self.desktop_scan < 30:
@@ -63,7 +72,7 @@ class ClaudeCodeSource:
         if time.time() - self.desktop_scan < 5:
             return
         self.desktop_scan = time.time()
-        for record in CLAUDE_SESSIONS.glob("*/*/local_*.json"):
+        for record in (r for root in CLAUDE_SESSIONS for r in root.glob("*/*/local_*.json")):
             try:
                 if time.time() - record.stat().st_mtime > 2 * 86400:
                     continue  # a session in use rewrites its record
